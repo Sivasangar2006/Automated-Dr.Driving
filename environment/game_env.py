@@ -51,12 +51,15 @@ class DrDrivingEnv(gym.Env):
         reward = 0.1
 
         # detect crash (mission failed screen is dark)
-        if np.mean(frame) < 0.05:
+       # detect crash using bottom part of screen
+        bottom_strip = frame[65:84, :, :]   # bottom 20 pixels of 84x84 image
+
+        if np.mean(bottom_strip) < 0.35:
             done = True
             reward = -10
             restart_mission()
         else:
-            done = False
+             done = False
 
         self.last_frame = frame
 

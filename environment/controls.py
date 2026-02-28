@@ -1,3 +1,4 @@
+import pygetwindow as gw
 import pyautogui
 import time
 
@@ -64,10 +65,24 @@ def perform_action(action: int):
 
 def restart_mission():
     """
-    Clicks the green retry button after crash
+    Bring BlueStacks to front and click retry button
     """
     release_all()
+
+    # wait for mission failed screen
     time.sleep(2)
 
-    pyautogui.click(RETRY_BUTTON[0], RETRY_BUTTON[1])
-    time.sleep(3)
+    # find BlueStacks window
+    windows = gw.getWindowsWithTitle("BlueStacks")
+
+    if len(windows) > 0:
+        win = windows[0]
+        win.activate()   # bring to front
+        time.sleep(1)
+
+    # move mouse to button and click
+    pyautogui.moveTo(RETRY_BUTTON[0], RETRY_BUTTON[1], duration=0.3)
+    pyautogui.click()
+
+    # wait for new mission to load
+    time.sleep(4)

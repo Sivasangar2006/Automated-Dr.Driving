@@ -1,6 +1,7 @@
 import numpy as np
 import cv2
 import mss
+import pyautogui
 
 # ---- CAMERA AREA (your coordinates) ----
 MONITOR = {
@@ -34,3 +35,31 @@ def get_frame():
     frame = np.expand_dims(normalized, axis=-1)
 
     return frame
+# -------- SPEEDOMETER CAPTURE --------
+SPEED_TOP_LEFT = (564, 862)
+SPEED_BOTTOM_RIGHT = (706, 1030)
+
+import mss
+
+sct = mss.mss()
+
+def get_speed_frame():
+    x1, y1 = SPEED_TOP_LEFT
+    x2, y2 = SPEED_BOTTOM_RIGHT
+
+    monitor = {
+        "top": y1,
+        "left": x1,
+        "width": x2 - x1,
+        "height": y2 - y1
+    }
+
+    img = np.array(sct.grab(monitor))
+
+    # remove alpha channel
+    img = img[:, :, :3]
+
+    # convert to grayscale
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    return gray
