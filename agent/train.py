@@ -6,7 +6,7 @@ import os
 from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import CheckpointCallback
-from environment.game_env import DoctorDrivingEnv
+from environment.game_env import DrDrivingEnv
 from agent.model import (
     POLICY,
     HYPERPARAMS,
@@ -24,7 +24,7 @@ def train(resume=False):
     os.makedirs(LOG_DIR, exist_ok=True)
 
     # --- set up the environment ---
-    env = DoctorDrivingEnv()
+    env = DrDrivingEnv()
     env = Monitor(env)  # Monitor logs rewards and episode lengths automatically
 
     # --- save a checkpoint every 50k steps ---
