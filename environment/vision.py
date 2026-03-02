@@ -58,40 +58,40 @@ def get_speed_frame():
 
 
 def get_speed():
-    """
-    Reads the speedometer and returns a speed value between 0.0 and 1.0.
-    0.0 = stopped
-    1.0 = max speed (~200 km/h)
-    """
-    gray = get_speed_frame()
-
-    if gray is None or gray.size == 0:
-        return 0.0
-
-    h, w = gray.shape
+    img = np.array(sct.grab(SPEED_MONITOR))
+    img = img[:, :, :3]
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    h, w = img.shape[:2]
     cx, cy = w // 2, h // 2
 
-    # Slightly lower threshold to better capture needle
-    _, thresh = cv2.threshold(gray, 130, 255, cv2.THRESH_BINARY)
+    # detect orange-red needle
+    lower_red1 = np.array([0,   80, 80])
+    upper_red1 = np.array([20, 255, 255])
+    lower_red2 = np.array([160, 80, 80])
+    upper_red2 = np.array([180, 255, 255])
+    mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
+    mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+    red_mask = cv2.bitwise_or(mask1, mask2)
 
-    points = cv2.findNonZero(thresh)
+    # only look at BOTTOM HALF of dial where needle sweeps
+    # this cuts out the top text and markings
+    bottom_mask = np.zeros_like(red_mask)
+    bottom_mask[cy:, :] = 255
+    needle_mask = cv2.bitwise_and(red_mask, bottom_mask)
 
+    points = cv2.findNonZero(needle_mask)
     if points is None:
         return 0.0
 
     points = points.reshape(-1, 2)
 
-    distances = np.sqrt((points[:, 0] - cx)**2 +  (points[:, 1] - cy)**2)
+    # use the rightmost red pixel X position as speed indicator
+    # leftmost X = 0 km/h, rightmost X = 200 km/h
+    min_x = int(w * -0.55)   # left boundary
+    max_x = int(w * 2.0)   # right boundary
+    tip_x = int(np.mean(points[:, 0]))  # average X of all needle pixels
 
-    tip = points[np.argmax(distances)]
-
-    angle = np.degrees(np.arctan2(tip[1] - cy, tip[0] - cx))
-
-    # These may require small tuning later
-    min_angle = -220.0
-    max_angle =  40.0
-
-    speed = (angle - min_angle) / (max_angle - min_angle)
+    speed = (tip_x - min_x) / (max_x - min_x)
     speed = float(np.clip(speed, 0.0, 1.0))
 
     return speed
