@@ -34,7 +34,7 @@ try:
         timestamp = time.strftime('%H:%M:%S')
 
         # log to list
-        line = f"[{timestamp}] Speed: {speed:.3f}  |  {kmh:3d} km/h"
+        line = f"[{timestamp}] Speed: {speed:.3f}  |  {kmh:3d} MPH"
         log.append(line)
         print(line)
 
