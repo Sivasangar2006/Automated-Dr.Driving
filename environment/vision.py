@@ -63,29 +63,14 @@ def get_speed(debug=False):
             angle += 360
 
        # --- NEW CALIBRATION BASED ON VIDEO ---
-# At 0 km/h, your code reads ~116 degrees
-# Based on the dial spacing, 200 km/h will be roughly 260 degrees
-# --- CALIBRATED FOR CLOCKWISE INCREASE ---
-        ANGLE_STOP = 116.0  # The angle when the car is at 0 km/h
-        ANGLE_MAX = 260.0   # The estimated angle at 200 km/h
+    # ---- SPEED CALIBRATION ----
 
-# Current angle minus the start point gives us the "distance" traveled
-# Example: (132° - 116°) / (260° - 116°) = 16 / 144 = ~11% speed
-        speed_ratio = (angle - ANGLE_STOP) / (ANGLE_MAX - ANGLE_STOP)
+    ANGLE_STOP = 190.0   # needle at 0 km/h (far right)
+    ANGLE_MAX  = 60.0    # needle at 200 km/h (far left)
 
-# Clamp it so it doesn't go negative or above 1.0
-        speed_ratio = float(np.clip(speed_ratio, 0.0, 1.0))
+    speed_ratio = (ANGLE_STOP - angle) / (ANGLE_STOP - ANGLE_MAX)
 
-        # Handle wrap-around if your dial crosses the 360/0 degree mark
-        current_angle = angle
-        if ANGLE_MAX > 360 and current_angle < 180:
-            current_angle += 360 
-
-        # Prevent division by zero and clamp
-        if ANGLE_STOP != ANGLE_MAX:
-            raw_ratio = (ANGLE_STOP - current_angle) / (ANGLE_STOP - ANGLE_MAX)
-            speed_ratio = float(np.clip(raw_ratio, 0.0, 1.0))
-
+    speed_ratio = float(np.clip(speed_ratio, 0.0, 1.0))
     # 4. Smooth the output
     if not hasattr(get_speed, "last_speed"):
         get_speed.last_speed = speed_ratio
