@@ -2,124 +2,91 @@ import numpy as np
 import cv2
 import mss
 
-# =========================
-# ---- GAME SCREEN AREA ---
-# =========================
-MONITOR = {
-    "top":    157,
-    "left":   43,
-    "width":  1591 - 43,
-    "height": 659 - 157
-}
-
-# ==============================
-# ---- SPEEDOMETER AREA --------
-# ==============================
-SPEED_MONITOR = {
-    "top":    833,
-    "left":   506,
-    "width":  753 - 506,
-    "height": 1060 - 833
-}
-
+MONITOR = {"top": 157, "left": 43, "width": 1548, "height": 502}
+SPEED_MONITOR = {"top": 833, "left": 506, "width": 247, "height": 227}
 sct = mss.mss()
 
-
-# ===============================
-# 84x84 GAME FRAME (FOR RL AGENT)
-# ===============================
 def get_frame():
     img = np.array(sct.grab(MONITOR))
-
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     resized = cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA)
     normalized = resized / 255.0
+    return np.expand_dims(normalized, axis=-1)
 
-    frame = np.expand_dims(normalized, axis=-1)
-    return frame
-
-
-# ===============================
-# SPEEDOMETER IMAGE
-# ===============================
-def get_speed_frame():
+def get_speed(debug=False):
+    """
+    Returns (speed_ratio, debug_images_dict) if debug=True
+    Otherwise returns just speed_ratio
+    """
     img = np.array(sct.grab(SPEED_MONITOR))
     img = img[:, :, :3]
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    return gray
-
-
-# ===============================
-# NEEDLE SPEED DETECTOR (FINAL)
-# ===============================
-def get_speed():
-
-    img = np.array(sct.grab(SPEED_MONITOR))
-    img = img[:, :, :3]
-
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    h, w = gray.shape
-
-    # Correct center of dial
+    h, w = img.shape[:2]
+    
     cx = int(w * 0.50)
     cy = int(h * 0.62)
 
-    # Edge detection (no color filtering)
-    edges = cv2.Canny(gray, 80, 200)
+    # 1. Isolate the Red Needle (Moved from your test script)
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    mask1 = cv2.inRange(hsv, np.array([0,   120, 70]), np.array([10,  255, 255]))
+    mask2 = cv2.inRange(hsv, np.array([170, 120, 70]), np.array([180, 255, 255]))
+    red_mask = cv2.bitwise_or(mask1, mask2)
 
-    # Detect straight lines
-    lines = cv2.HoughLinesP(
-        edges,
-        1,
-        np.pi / 180,
-        threshold=60,
-        minLineLength=40,
-        maxLineGap=10
-    )
+    donut = np.zeros_like(red_mask)
+    cv2.circle(donut, (cx, cy), int(min(h, w) * 0.48), 255, -1)
+    cv2.circle(donut, (cx, cy), int(min(h, w) * 0.12), 0, -1)
+    needle_mask = cv2.bitwise_and(red_mask, donut)
 
-    if lines is None:
-        return get_speed.last_speed if hasattr(get_speed, "last_speed") else 0.0
+    # 2. Find the Needle Tip using Contours
+    contours, _ = cv2.findContours(needle_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    speed_ratio = get_speed.last_speed if hasattr(get_speed, "last_speed") else 0.0
+    angle = 0.0
 
-    # Find line closest to dial center
-    best_line = None
-    best_dist = 999999
+    if contours:
+        # Get the largest red blob
+        largest_contour = max(contours, key=cv2.contourArea)
+        
+        # Find the point in the contour furthest from the center
+        best_dist = -1
+        tip = (cx, cy)
+        for point in largest_contour:
+            px, py = point[0]
+            dist = (px - cx)**2 + (py - cy)**2
+            if dist > best_dist:
+                best_dist = dist
+                tip = (px, py)
 
-    for line in lines:
-        x1, y1, x2, y2 = line[0]
-        mx, my = (x1 + x2) // 2, (y1 + y2) // 2
-        dist = np.sqrt((mx - cx)**2 + (my - cy)**2)
+        # 3. Calculate Angle
+        # Using standard math: 0° is right, 90° is up. 
+        angle = np.degrees(np.arctan2(cy - tip[1], tip[0] - cx))
+        if angle < 0:
+            angle += 360
 
-        if dist < best_dist:
-            best_dist = dist
-            best_line = (x1, y1, x2, y2)
+       # --- NEW CALIBRATION BASED ON VIDEO ---
+# At 0 km/h, your code reads ~116 degrees
+# Based on the dial spacing, 200 km/h will be roughly 260 degrees
+# --- CALIBRATED FOR CLOCKWISE INCREASE ---
+        ANGLE_STOP = 116.0  # The angle when the car is at 0 km/h
+        ANGLE_MAX = 260.0   # The estimated angle at 200 km/h
 
-    x1, y1, x2, y2 = best_line
+# Current angle minus the start point gives us the "distance" traveled
+# Example: (132° - 116°) / (260° - 116°) = 16 / 144 = ~11% speed
+        speed_ratio = (angle - ANGLE_STOP) / (ANGLE_MAX - ANGLE_STOP)
 
-    # Pick farthest endpoint as needle tip
-    d1 = np.sqrt((x1 - cx)**2 + (y1 - cy)**2)
-    d2 = np.sqrt((x2 - cx)**2 + (y2 - cy)**2)
+# Clamp it so it doesn't go negative or above 1.0
+        speed_ratio = float(np.clip(speed_ratio, 0.0, 1.0))
 
-    tip = (x1, y1) if d1 > d2 else (x2, y2)
+        # Handle wrap-around if your dial crosses the 360/0 degree mark
+        current_angle = angle
+        if ANGLE_MAX > 360 and current_angle < 180:
+            current_angle += 360 
 
-    # Calculate angle
-    angle = np.degrees(np.arctan2(cy - tip[1], tip[0] - cx))
-    if angle < 0:
-        angle += 360
+        # Prevent division by zero and clamp
+        if ANGLE_STOP != ANGLE_MAX:
+            raw_ratio = (ANGLE_STOP - current_angle) / (ANGLE_STOP - ANGLE_MAX)
+            speed_ratio = float(np.clip(raw_ratio, 0.0, 1.0))
 
-    # --- CALIBRATION ---
-    # Measure from your dial:
-    # At 0 mph -> around 182 degrees
-    # At 200 mph -> around 138 degrees
-
-    ANGLE_STOP = 182.0
-    ANGLE_MAX = 138.0
-
-    angle_clamped = max(min(angle, ANGLE_STOP), ANGLE_MAX)
-
-    speed_ratio = (ANGLE_STOP - angle_clamped) / (ANGLE_STOP - ANGLE_MAX)
-    speed_ratio = float(np.clip(speed_ratio, 0.0, 1.0))
-
-    # Smooth
+    # 4. Smooth the output
     if not hasattr(get_speed, "last_speed"):
         get_speed.last_speed = speed_ratio
 
@@ -127,8 +94,17 @@ def get_speed():
     speed_ratio = alpha * speed_ratio + (1 - alpha) * get_speed.last_speed
     get_speed.last_speed = speed_ratio
 
-    speed_mph = speed_ratio * 200.0
-
-    print(f"ANGLE: {angle:.2f} | SPEED: {speed_mph:.1f} MPH")
+    if debug:
+        # Draw debug visuals
+        debug_img = img.copy()
+        cv2.circle(debug_img, (cx, cy), 3, (255, 0, 0), -1) # Center
+        if contours:
+            cv2.circle(debug_img, tip, 5, (0, 255, 0), -1)  # Tip
+            cv2.line(debug_img, (cx, cy), tip, (0, 255, 0), 2) # Needle line
+        
+        return speed_ratio, angle, {
+            "original": debug_img,
+            "mask": cv2.cvtColor(needle_mask, cv2.COLOR_GRAY2BGR)
+        }
 
     return speed_ratio
