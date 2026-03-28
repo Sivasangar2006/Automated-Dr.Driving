@@ -26,28 +26,30 @@ class DrDrivingEnv(gym.Env):
         self.last_frame = None
         self._step_count = 0
         self._max_steps = 500
+        self._crash_cooldown = 0
 
     def _process_frame(self, frame):
         # convert normalized float (0-1) to uint8 (0-255) for SB3
         return (frame * 255).astype(np.uint8)
 
     def _is_crashed(self, frame):
-        # Person A's improved crash detection
-        # checks bottom strip of frame for darkness (road disappears on crash)
+        # frame is normalized float (0-1)
+        # screen goes very dark on crash
         bottom_strip = frame[65:84, :, :]
-        return np.mean(bottom_strip) < 0.35
+        return np.mean(bottom_strip) < 0.05
 
     # -------- RESET --------
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
         release_all()
-        time.sleep(1)
+        time.sleep(3)  # wait for level to load
 
         self._step_count = 0
+        self._crash_cooldown = 0
         self.last_frame = self._process_frame(get_frame())
 
-        return self.last_frame, {}  # gymnasium requires (obs, info)
+        return self.last_frame, {}
 
     # -------- STEP --------
     def step(self, action):
@@ -67,10 +69,10 @@ class DrDrivingEnv(gym.Env):
         speed = get_speed()
 
         # main reward — go fast
-        reward = speed * 1.0
+        reward = speed * 5.0
 
         # small survival bonus each step
-        reward += 0.1
+        reward += 0.5
 
         # penalise idle (action 0)
         if action == 0:
@@ -84,11 +86,15 @@ class DrDrivingEnv(gym.Env):
         if action == 1:
             reward += 0.05
 
-        # crash detection using Person A's bottom strip method
+        # --- crash detection with cooldown ---
         terminated = False
-        if self._is_crashed(raw_frame):  # use raw float frame for crash check
+        if self._crash_cooldown > 0:
+            # still in cooldown, skip crash check
+            self._crash_cooldown -= 1
+        elif self._is_crashed(raw_frame):
             terminated = True
             reward = -10.0
+            self._crash_cooldown = 10  # ignore next 10 steps after crash
             restart_mission()
 
         # truncated = hit max steps without crashing
