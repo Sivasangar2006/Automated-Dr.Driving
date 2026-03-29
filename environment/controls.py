@@ -4,85 +4,75 @@ import time
 
 pyautogui.FAILSAFE = False
 
-KEY_DELAY = 0.08
-
 # retry button coordinates
 RETRY_BUTTON = (1752, 974)
 
-
-def release_all():
-    pyautogui.keyUp('up')
-    pyautogui.keyUp('down')
-    pyautogui.keyUp('left')
-    pyautogui.keyUp('right')
-
-
-def accelerate():
-    release_all()
-    pyautogui.keyDown('up')
-    time.sleep(KEY_DELAY)
-
-
-def brake():
-    release_all()
-    pyautogui.keyDown('down')
-    time.sleep(KEY_DELAY)
-
-
-def go_left():
-    release_all()
-    pyautogui.keyDown('left')
-    time.sleep(KEY_DELAY)
-
-
-def go_right():
-    release_all()
-    pyautogui.keyDown('right')
-    time.sleep(KEY_DELAY)
-
-
-def no_action():
-    release_all()
-
-
+# -------------------------
+# MAIN ACTION FUNCTION (FINAL)
+# -------------------------
 def perform_action(action: int):
+    """
+    0 = straight
+    1 = left
+    2 = right
+    3 = strong left
+    4 = strong right
+    """
 
-    if action == 0:
-        no_action()
+    # 🚀 ALWAYS HOLD ACCELERATION (EVERY STEP)
+    pyautogui.keyDown("up")
 
-    elif action == 1:
-        accelerate()
+    # NEVER brake (for now)
+    pyautogui.keyUp("down")
+
+    # Reset steering every step
+    pyautogui.keyUp("left")
+    pyautogui.keyUp("right")
+
+    # Apply steering
+    if action == 1:
+        pyautogui.keyDown("left")
 
     elif action == 2:
-        brake()
+        pyautogui.keyDown("right")
 
     elif action == 3:
-        go_left()
+        pyautogui.keyDown("left")
 
     elif action == 4:
-        go_right()
+        pyautogui.keyDown("right")
 
 
+# -------------------------
+# OPTIONAL (ONLY FOR RESET CASES)
+# -------------------------
+def release_all():
+    pyautogui.keyUp("up")
+    pyautogui.keyUp("down")
+    pyautogui.keyUp("left")
+    pyautogui.keyUp("right")
+
+
+# -------------------------
+# RESTART FUNCTION
+# -------------------------
 def restart_mission():
     """
     Bring BlueStacks to front and click retry button
     """
-    release_all()
 
-    # wait for mission failed screen
+    # 🚫 DO NOT release_all() here (important)
+
     time.sleep(2)
 
-    # find BlueStacks window
     windows = gw.getWindowsWithTitle("BlueStacks")
 
     if len(windows) > 0:
         win = windows[0]
-        win.activate()   # bring to front
+        win.activate()
         time.sleep(1)
 
-    # move mouse to button and click
     pyautogui.moveTo(RETRY_BUTTON[0], RETRY_BUTTON[1], duration=0.3)
     pyautogui.click()
 
-    # wait for new mission to load
     time.sleep(4)

@@ -12,10 +12,9 @@ class DrDrivingEnv(gym.Env):
     def __init__(self):
         super(DrDrivingEnv, self).__init__()
 
-        # 5 actions: idle, accelerate, brake, left, right
-        self.action_space = spaces.Discrete(5)
+        # 🔥 REDUCED ACTION SPACE
+        self.action_space = spaces.Discrete(3)
 
-        # observation = 84x84 grayscale image (uint8 for SB3 CnnPolicy)
         self.observation_space = spaces.Box(
             low=0,
             high=255,
@@ -23,82 +22,102 @@ class DrDrivingEnv(gym.Env):
             dtype=np.uint8
         )
 
-        self.last_frame = None
         self._step_count = 0
         self._max_steps = 500
 
+        self.prev_speed = 0.0
+
     def _process_frame(self, frame):
-        # convert normalized float (0-1) to uint8 (0-255) for SB3
         return (frame * 255).astype(np.uint8)
 
     def _is_crashed(self, frame):
-        # Person A's improved crash detection
-        # checks bottom strip of frame for darkness (road disappears on crash)
         bottom_strip = frame[65:84, :, :]
         return np.mean(bottom_strip) < 0.35
+
+    def _lane_reward(self, frame):
+        h, w, _ = frame.shape
+        center = frame[:, w//3:2*w//3]
+        brightness = np.mean(center)
+        return 1.0 - brightness
 
     # -------- RESET --------
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
-        release_all()
         time.sleep(1)
 
         self._step_count = 0
-        self.last_frame = self._process_frame(get_frame())
+        self.prev_speed = 0.0
 
-        return self.last_frame, {}  # gymnasium requires (obs, info)
+        frame = self._process_frame(get_frame())
+        return frame, {}
 
     # -------- STEP --------
     def step(self, action):
         self._step_count += 1
 
-        # send action to game
-        perform_action(action)
+        # 🔥 FORCE SAFE START
+        if self._step_count < 20:
+            action = 0  # straight
 
-        # wait for game to update
+        # 🔥 MAP ACTIONS
+        # 0 = straight
+        # 1 = left
+        # 2 = right
+
+        perform_action(action)
         time.sleep(0.08)
 
-        # capture new frame
         raw_frame = get_frame()
         frame = self._process_frame(raw_frame)
 
-        # --- reward function ---
+        # =========================
+        # REWARD
+        # =========================
         speed = get_speed()
+        reward = 0.0
 
-        # main reward — go fast
-        reward = speed * 1.0
+        reward += speed * 2.0
 
-        # small survival bonus each step
-        reward += 0.1
+        if speed > 0.6:
+            reward += 0.1
 
-        # penalise idle (action 0)
+        lane_reward = self._lane_reward(raw_frame)
+        reward += lane_reward * 1.5
+
+        speed_diff = speed - self.prev_speed
+        reward += speed_diff * 2.0
+
+        self.prev_speed = speed
+
+        if speed < 0.2:
+            reward -= 0.2
+
+        # 🔥 STRONG STRAIGHT BIAS
         if action == 0:
+            reward += 0.1
+        else:
             reward -= 0.05
 
-        # penalise braking (action 2)
-        if action == 2:
-            reward -= 0.05
-
-        # reward accelerating (action 1)
-        if action == 1:
-            reward += 0.05
-
-        # crash detection using Person A's bottom strip method
+        # =========================
+        # TERMINATION
+        # =========================
         terminated = False
-        if self._is_crashed(raw_frame):  # use raw float frame for crash check
+
+        if self._is_crashed(raw_frame):
             terminated = True
-            reward = -10.0
+            reward = -8.0
             restart_mission()
 
-        # truncated = hit max steps without crashing
         truncated = self._step_count >= self._max_steps
 
-        self.last_frame = frame
-        info = {"step": self._step_count, "speed": speed}
+        info = {
+            "speed": speed,
+            "reward": reward,
+            "action": action
+        }
 
         return frame, reward, terminated, truncated, info
 
-    # -------- CLOSE --------
     def close(self):
         release_all()
