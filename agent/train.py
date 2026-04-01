@@ -74,7 +74,7 @@ def evaluate(n_episodes=5):
 
     print(f"Loading model from {model_path}...\n")
     model = PPO.load(model_path)
-    env = DoctorDrivingEnv()
+    env = DrDrivingEnv()
 
     for ep in range(n_episodes):
         obs, _ = env.reset()
