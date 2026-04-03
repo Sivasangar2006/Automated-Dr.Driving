@@ -10,7 +10,7 @@ POLICY = "CnnPolicy"  # CNN because our input is an image
 # you can come back and tweak these later to improve performance
 HYPERPARAMS = {
     "learning_rate":  3e-4,   # how fast the AI updates itself
-    "n_steps":        512,    # how many steps before each update
+    "n_steps":        256,    # ⚡ reduced from 512 — update model twice as often
     "batch_size":     64,     # how many samples per training batch
     "n_epochs":       10,     # how many times to reuse each batch
     "gamma":          0.99,   # how much the AI values future rewards
@@ -22,7 +22,7 @@ HYPERPARAMS = {
 }
 
 # Training config
-TOTAL_TIMESTEPS = 500_000   # increase to 2M+ when using real game
+TOTAL_TIMESTEPS = 150_000   # ⚡ reduced from 500k — BC pre-training covers the rest
 SAVE_DIR        = "models/"
 LOG_DIR         = "logs/"
 MODEL_NAME      = "dr_driving_ppo"

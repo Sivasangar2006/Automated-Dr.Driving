@@ -17,7 +17,7 @@ from agent.model import (
 )
 
 
-def train(resume=False):
+def train(resume=False, pretrain=False):
 
     # --- create folders if they don't exist yet ---
     os.makedirs(SAVE_DIR, exist_ok=True)
@@ -35,8 +35,16 @@ def train(resume=False):
     )
 
     # --- create or load the model ---
-    if resume and os.path.exists(f"{SAVE_DIR}/{MODEL_NAME}.zip"):
-        print("Resuming from saved model...")
+    bc_path = f"{SAVE_DIR}/bc_pretrained.zip"
+
+    if pretrain and os.path.exists(bc_path):
+        print("Loading BC pre-trained weights as starting point...")
+        model = PPO.load(bc_path, env=env, tensorboard_log=LOG_DIR)
+        # Make sure key training params match our config
+        model.n_steps   = HYPERPARAMS["n_steps"]
+        model.batch_size = HYPERPARAMS["batch_size"]
+    elif resume and os.path.exists(f"{SAVE_DIR}/{MODEL_NAME}.zip"):
+        print("Resuming from saved RL checkpoint...")
         model = PPO.load(f"{SAVE_DIR}/{MODEL_NAME}", env=env)
     else:
         print("Starting fresh training...")

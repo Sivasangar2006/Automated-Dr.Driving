@@ -13,13 +13,23 @@ from environment.controls import perform_action, release_all, restart_mission, f
 # -------------------------------------------------------
 PHASE = 2
 
+# -------------------------------------------------------
+# FRAME SKIPPING
+#   The agent decides once, then the action is held for
+#   FRAME_SKIP game frames before the next decision.
+#   Each RL step is therefore richer — 4× more game time
+#   per training decision → fewer total steps to converge.
+# -------------------------------------------------------
+FRAME_SKIP  = 4      # frames per decision
+STEP_SLEEP  = 0.02  # seconds per frame (was 0.08 for 1 frame)
+
 
 class DrDrivingEnv(gym.Env):
 
     def __init__(self):
         super(DrDrivingEnv, self).__init__()
 
-        self.action_space = spaces.Discrete(3)  # 0=straight, 1=left, 2=right
+        self.action_space = spaces.Discrete(9)  # 3 speed states × 3 steer states
 
         self.observation_space = spaces.Box(
             low=0,
@@ -31,14 +41,20 @@ class DrDrivingEnv(gym.Env):
         self._step_count = 0
         self._max_steps = 500
         self.prev_speed = 0.0
+        self._stall_since = None   # timestamp when speed first dropped to ~0
 
     def _process_frame(self, frame):
         return (frame * 255).astype(np.uint8)
 
     def _is_crashed(self, frame):
-        """Crash = bottom strip goes nearly black"""
+        """
+        Detects the brief dark flash when the car first hits something.
+        Threshold raised to 0.10 to be more sensitive.
+        NOTE: The 'Mission Failed' screen itself is NOT dark — it is
+        handled by stall detection (speed stays 0 on that screen).
+        """
         bottom_strip = frame[65:84, :, :]
-        return np.mean(bottom_strip) < 0.05
+        return np.mean(bottom_strip) < 0.10
 
     def _is_finished(self, frame):
         """
@@ -51,10 +67,11 @@ class DrDrivingEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
-        time.sleep(1)
+        time.sleep(0.4)  # ⚡ reduced: was 1.0s
 
         self._step_count = 0
         self.prev_speed = 0.0
+        self._stall_since = None
 
         frame = self._process_frame(get_frame())
         return frame, {}
@@ -62,9 +79,9 @@ class DrDrivingEnv(gym.Env):
     def step(self, action):
         self._step_count += 1
 
-        # Warm-up: force straight for the first 20 steps regardless of phase
+        # Warm-up: force accelerate-straight for the first 20 steps
         if self._step_count < 20:
-            action = 0
+            action = 0  # Accelerate + Straight
 
         # Phase 1 override: no steering allowed
         if PHASE == 1:
@@ -72,67 +89,109 @@ class DrDrivingEnv(gym.Env):
 
         # Read frame + speed BEFORE acting
         raw_frame = get_frame()
-        frame = self._process_frame(raw_frame)
+        frame     = self._process_frame(raw_frame)
+        speed     = get_speed()
+
+        # ⚡ Frame-skip loop: hold the action for FRAME_SKIP game frames
+        for _ in range(FRAME_SKIP):
+            perform_action(action)       # no speed arg — AI controls speed now
+            time.sleep(STEP_SLEEP)
+
+        # Read speed AFTER acting (for reward + stall detection)
         speed = get_speed()
 
-        perform_action(action, speed=speed)
-        time.sleep(0.08)
-
-        # ── Reward (Phase 2: survival-first) ─────────────────────
+        # ── Reward (Phase 2: full AI control) ────────────────────────────────
         #
-        #   PRIMARY GOAL   → stay alive as long as possible
-        #   SECONDARY GOAL → cruise near 55-65 km/h
-        #   TERTIARY GOAL  → prefer going straight (steer only when needed)
+        #   The AI controls acceleration, coasting, AND braking.
+        #   Reward logic encourages:
+        #     - Fast driving on clear road
+        #     - Coasting (not braking) when dodging — your key insight
+        #     - Hard braking only when truly necessary
+        #     - Staying alive above everything else
         #
-        #   +0.05/step  → alive and moving (survival bonus)
-        #   +0.50       → speed in acceptable range (45–70 km/h)
-        #   -0.30       → speed out of acceptable range
-        #   -0.20       → steering penalty (left or right action)
-        #   -10.0       → crash (overrides everything)
-        #
-        #   Steering penalty logic:
-        #     The model WILL still steer to avoid a crash because
-        #     avoiding -10.0 is worth far more than -0.20 penalty.
-        #     But it won't randomly steer for no reason.
-        # ─────────────────────────────────────────────────────────
-        SPEED_OK_MIN = 0.225  # 45 km/h — below this = too slow
-        SPEED_OK_MAX = 0.35   # 70 km/h — above this = too fast
+        #   +0.05        → survival bonus every step
+        #   +0.30        → speed > 50 km/h  (good cruising)
+        #   +0.10        → speed 20–50 km/h (coasting through obstacle zone ✅)
+        #   -0.20        → speed < 20 km/h  (too slow, nearly stopped)
+        #   -0.03        → coast action (small, don't coast needlessly)
+        #   -0.07        → brake action  (more aggressive, use sparingly)
+        #   -0.15        → any steering   (steer only when needed)
+        #   -10.0        → crash / stall  (overrides everything)
+        #   +50.0        → finish line 🏆
+        # ─────────────────────────────────────────────────────────────────────
 
-        reward = 0.05         # survival bonus every step
+        reward = 0.05   # survival bonus every step
 
-        if SPEED_OK_MIN <= speed <= SPEED_OK_MAX:
-            reward += 0.50    # in acceptable speed range
-        else:
-            reward -= 0.30    # too slow or too fast
-
-        # Steering penalty — discourage random left/right
-        if action in (1, 2):
+        # Speed reward — nuanced: coasting is acceptable, not punished
+        if speed > 0.25:          # > 50 km/h — good speed
+            reward += 0.30
+        elif speed > 0.10:        # 20–50 km/h — coasting (OK near obstacles)
+            reward += 0.10
+        else:                     # < 20 km/h — nearly stopped
             reward -= 0.20
+
+        # Coast penalty — small, discourages pointless coasting on clear road
+        if action in (3, 4, 5):
+            reward -= 0.03
+
+        # Brake penalty — more expensive, use only when truly needed
+        if action in (6, 7, 8):
+            reward -= 0.07
+
+        # Steering penalty — prefer straight, steer only to avoid crashes
+        if action in (1, 2, 4, 5, 7, 8):
+            reward -= 0.15
 
         terminated = False
 
-        if self._is_finished(raw_frame):
-            # Reached the finish line — big reward, then restart
-            terminated = True
-            reward = +50.0
-            print(f"[FINISH LINE] Reached finish at step {self._step_count}! 🏆")
-            finish_mission()
+        # ── Stall detection: speedometer near 0 for > 3 seconds ──
+        # Catches the "Mission Failed" screen and any other freeze.
+        # Time-based is more reliable than step-counting since
+        # step rate varies with CPU load.
+        STALL_SPEED     = 0.02   # anything below this = "stopped"
+        STALL_TIMEOUT   = 3.0    # seconds before forcing restart
+        STALL_GRACE     = 30     # ignore stall during warmup steps
 
-        elif self._is_crashed(raw_frame):
-            # Crashed into a car or wall
-            terminated = True
-            reward = -10.0
-            restart_mission()
+        if self._step_count > STALL_GRACE and speed < STALL_SPEED:
+            if self._stall_since is None:
+                self._stall_since = time.time()   # start the clock
+            elif time.time() - self._stall_since >= STALL_TIMEOUT:
+                print(f"[STALL] Speed near 0 for >3s at step {self._step_count} — forcing restart")
+                terminated = True
+                reward = -10.0
+                self._stall_since = None
+                restart_mission()
+        else:
+            self._stall_since = None              # reset clock when moving
+
+        if not terminated:
+            if self._is_finished(raw_frame):
+                # Reached the finish line — big reward, then restart
+                terminated = True
+                reward = +50.0
+                print(f"[FINISH LINE] Reached finish at step {self._step_count}! 🏆")
+                finish_mission()
+
+            elif self._is_crashed(raw_frame):
+                # Crashed into a car or wall (screen went dark)
+                terminated = True
+                reward = -10.0
+                restart_mission()
 
         truncated = self._step_count >= self._max_steps
 
         info = {
-            "phase": PHASE,
-            "speed": speed,
+            "phase":     PHASE,
+            "speed":     speed,
             "speed_kmh": round(speed * 200, 1),
-            "reward": reward,
-            "action": action,
-            "step": self._step_count,
+            "reward":    reward,
+            "action":    action,
+            "action_name": [
+                "Accel+Straight", "Accel+Left",  "Accel+Right",
+                "Coast+Straight", "Coast+Left",  "Coast+Right",
+                "Brake+Straight", "Brake+Left",  "Brake+Right",
+            ][action],
+            "step":      self._step_count,
         }
 
         return frame, reward, terminated, truncated, info

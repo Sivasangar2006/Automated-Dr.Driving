@@ -4,79 +4,57 @@ import time
 
 pyautogui.FAILSAFE = False
 
-# Speed governor thresholds (speed_ratio = km/h / 200)
-SPEED_MIN = 0.29   # 58 km/h  — re-apply throttle below this
-SPEED_MAX = 0.315  # 63 km/h  — cut throttle above this
-
-# Internal throttle state so we don't spam keyDown/keyUp every frame
-_throttle_on = False
-
 # retry button coordinates
 RETRY_BUTTON = (1752, 974)
 
-# -------------------------
-# MAIN ACTION FUNCTION (FINAL)
-# -------------------------
-def perform_action(action: int, speed: float = None):
+# ─────────────────────────────────────────────────────────────────────────────
+# 9-ACTION FULL CONTROL SYSTEM
+#
+#   Speed state  ×  Steer state  =  Action
+#   ─────────────────────────────────────────
+#   Accelerate   +  Straight     =  0   (UP)
+#   Accelerate   +  Left         =  1   (UP + LEFT)
+#   Accelerate   +  Right        =  2   (UP + RIGHT)
+#   Coast        +  Straight     =  3   (no keys — let car slow naturally)
+#   Coast        +  Left         =  4   (LEFT only — YOUR KEY INSIGHT)
+#   Coast        +  Right        =  5   (RIGHT only)
+#   Brake        +  Straight     =  6   (DOWN)
+#   Brake        +  Left         =  7   (DOWN + LEFT)
+#   Brake        +  Right        =  8   (DOWN + RIGHT)
+#
+#   The old speed governor has been REMOVED.
+#   The AI now fully controls when to accelerate, coast, or brake.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def perform_action(action: int):
     """
-    Controls steering and throttle.
-
-    action:
-        0 = straight
-        1 = left
-        2 = right
-        3 = strong left
-        4 = strong right
-
-    speed (optional):
-        Current speed ratio (0.0 – 1.0) from get_speed().
-        If provided, the throttle is governed to stay in the
-        60–70 km/h band (ratio 0.30–0.35).
-        If None, always accelerates (legacy behaviour).
+    Executes one of 9 driving actions by sending the appropriate key events.
+    All keys are released first to ensure a clean state each step.
     """
-    global _throttle_on
-
-    # --- SPEED GOVERNOR ---
-    if speed is None:
-        # Legacy: always hold acceleration
-        if not _throttle_on:
-            pyautogui.keyDown("up")
-            _throttle_on = True
-    else:
-        if speed >= SPEED_MAX and _throttle_on:
-            # Reached 70 km/h — release throttle
-            pyautogui.keyUp("up")
-            _throttle_on = False
-        elif speed < SPEED_MIN and not _throttle_on:
-            # Dropped below 60 km/h — apply throttle again
-            pyautogui.keyDown("up")
-            _throttle_on = True
-        # Between 60–70 km/h: keep current throttle state (no change)
-
-    # Never brake
+    # ── Release everything first (clean slate each step) ──────────────────
+    pyautogui.keyUp("up")
     pyautogui.keyUp("down")
-
-    # Reset steering every step
     pyautogui.keyUp("left")
     pyautogui.keyUp("right")
 
-    # Apply steering
-    if action == 1:
+    # ── Speed control ──────────────────────────────────────────────────────
+    if action in (0, 1, 2):        # Accelerate
+        pyautogui.keyDown("up")
+    elif action in (6, 7, 8):      # Brake
+        pyautogui.keyDown("down")
+    # Coast (3, 4, 5): no vertical key — car slows naturally
+
+    # ── Steering ───────────────────────────────────────────────────────────
+    if action in (1, 4, 7):        # Left
         pyautogui.keyDown("left")
-
-    elif action == 2:
+    elif action in (2, 5, 8):      # Right
         pyautogui.keyDown("right")
-
-    elif action == 3:
-        pyautogui.keyDown("left")
-
-    elif action == 4:
-        pyautogui.keyDown("right")
+    # Straight (0, 3, 6): no horizontal key
 
 
-# -------------------------
-# OPTIONAL (ONLY FOR RESET CASES)
-# -------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# RELEASE ALL KEYS  (used on reset / episode end)
+# ─────────────────────────────────────────────────────────────────────────────
 def release_all():
     pyautogui.keyUp("up")
     pyautogui.keyUp("down")
@@ -96,29 +74,29 @@ def restart_mission():
     """
     release_all()  # release keys before UI interaction
 
-    time.sleep(3)  # wait longer for crash overlay to fully settle
+    time.sleep(1.2)  # ⚡ reduced: was 3.0s
 
     windows = gw.getWindowsWithTitle("BlueStacks")
     if len(windows) > 0:
         win = windows[0]
         win.activate()
-        time.sleep(1.0)  # give window time to come to front
+        time.sleep(0.3)  # ⚡ reduced: was 1.0s
 
     # Click 1 — dismisses result screen
-    pyautogui.moveTo(RETRY_BUTTON[0], RETRY_BUTTON[1], duration=0.3)
+    pyautogui.moveTo(RETRY_BUTTON[0], RETRY_BUTTON[1], duration=0.05)  # ⚡ was 0.3
     pyautogui.click()
-    time.sleep(2.0)  # wait generously for next dialog
+    time.sleep(0.8)  # ⚡ reduced: was 2.0s
 
     # Click 2 — confirms / starts new run
-    pyautogui.moveTo(RETRY_BUTTON[0], RETRY_BUTTON[1], duration=0.2)
+    pyautogui.moveTo(RETRY_BUTTON[0], RETRY_BUTTON[1], duration=0.05)  # ⚡ was 0.2
     pyautogui.click()
-    time.sleep(1.5)
+    time.sleep(0.5)  # ⚡ reduced: was 1.5s
 
     # Click 3 — safety click in case dialog was slow loading
-    pyautogui.moveTo(RETRY_BUTTON[0], RETRY_BUTTON[1], duration=0.2)
+    pyautogui.moveTo(RETRY_BUTTON[0], RETRY_BUTTON[1], duration=0.05)  # ⚡ was 0.2
     pyautogui.click()
 
-    time.sleep(4)   # wait for game to fully reload
+    time.sleep(2.0)  # ⚡ reduced: was 4.0s — ~5.0s total vs 12.2s before
 
 
 # -------------------------
@@ -131,26 +109,26 @@ def finish_mission():
     """
     release_all()
 
-    time.sleep(3)
+    time.sleep(1.2)  # ⚡ reduced: was 3.0s
 
     windows = gw.getWindowsWithTitle("BlueStacks")
     if len(windows) > 0:
         win = windows[0]
         win.activate()
-        time.sleep(1.0)
+        time.sleep(0.3)  # ⚡ reduced: was 1.0s
 
     # Click 1 — dismisses win/result screen
-    pyautogui.moveTo(RETRY_BUTTON[0], RETRY_BUTTON[1], duration=0.3)
+    pyautogui.moveTo(RETRY_BUTTON[0], RETRY_BUTTON[1], duration=0.05)  # ⚡ was 0.3
     pyautogui.click()
-    time.sleep(2.0)
+    time.sleep(0.8)  # ⚡ reduced: was 2.0s
 
     # Click 2 — starts new run
-    pyautogui.moveTo(RETRY_BUTTON[0], RETRY_BUTTON[1], duration=0.2)
+    pyautogui.moveTo(RETRY_BUTTON[0], RETRY_BUTTON[1], duration=0.05)  # ⚡ was 0.2
     pyautogui.click()
-    time.sleep(1.5)
+    time.sleep(0.5)  # ⚡ reduced: was 1.5s
 
     # Click 3 — safety click
-    pyautogui.moveTo(RETRY_BUTTON[0], RETRY_BUTTON[1], duration=0.2)
+    pyautogui.moveTo(RETRY_BUTTON[0], RETRY_BUTTON[1], duration=0.05)  # ⚡ was 0.2
     pyautogui.click()
 
-    time.sleep(4)
+    time.sleep(2.0)  # ⚡ reduced: was 4.0s

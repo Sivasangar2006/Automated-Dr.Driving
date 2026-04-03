@@ -24,6 +24,12 @@ def main():
     )
 
     parser.add_argument(
+        "--pretrain",
+        action  = "store_true",
+        help    = "start RL from BC pre-trained weights (run train_bc.py first)"
+    )
+
+    parser.add_argument(
         "--episodes",
         type    = int,
         default = 5,
@@ -33,7 +39,7 @@ def main():
     args = parser.parse_args()
 
     if args.mode == "train":
-        train(resume=args.resume)
+        train(resume=args.resume, pretrain=args.pretrain)
 
     elif args.mode == "evaluate":
         evaluate(n_episodes=args.episodes)

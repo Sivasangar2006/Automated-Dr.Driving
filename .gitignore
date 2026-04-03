@@ -22,6 +22,8 @@ Gameplay Captures and Replay Data
 *.jpg
 replay_buffer.pkl
 data/
+recordings/
+models/
 
 IDE and OS Files
 .vscode/
