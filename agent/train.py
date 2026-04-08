@@ -3,9 +3,11 @@
 # It creates the environment, builds the PPO agent, and starts learning.
 
 import os
+import numpy as np
+from collections import deque
 from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.callbacks import CheckpointCallback
+from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
 from environment.game_env import DrDrivingEnv
 from agent.model import (
     POLICY,
@@ -15,6 +17,32 @@ from agent.model import (
     LOG_DIR,
     MODEL_NAME,
 )
+
+
+class DiagnosticCallback(BaseCallback):
+    def __init__(self, log_every=5_000):
+        super().__init__()
+        self.log_every = log_every
+        self._act_buf  = deque(maxlen=log_every)
+        self._rew_buf  = deque(maxlen=log_every)
+        self._last_log = 0
+
+    def _on_step(self):
+        self._act_buf.append(int(self.locals["actions"][0]))
+        self._rew_buf.append(float(self.locals["rewards"][0]))
+
+        if self.num_timesteps - self._last_log >= self.log_every:
+            self._last_log = self.num_timesteps
+            arr = np.array(self._act_buf)
+            mean_r = np.mean(self._rew_buf)
+            n = len(arr)
+            
+            # Action buckets
+            accel = np.sum(np.isin(arr, [0,1,2]))
+            steer = np.sum(np.isin(arr, [1,2,4,5,7,8]))
+            
+            print(f"\nStep {self.num_timesteps:>7,} | mean_r: {mean_r:+.3f} | accel: {100*accel/n:.0f}% | steer: {100*steer/n:.0f}%")
+        return True
 
 
 def train(resume=False, pretrain=False):
@@ -55,6 +83,8 @@ def train(resume=False, pretrain=False):
             **HYPERPARAMS,
         )
 
+    diag_callback = DiagnosticCallback(log_every=5_000)
+
     # --- start training ---
     print(f"\nTraining for {TOTAL_TIMESTEPS:,} steps...")
     print("To monitor live, open a new terminal and run:")
@@ -62,7 +92,7 @@ def train(resume=False, pretrain=False):
 
     model.learn(
         total_timesteps     = TOTAL_TIMESTEPS,
-        callback            = checkpoint_callback,
+        callback            = [checkpoint_callback, diag_callback],
         tb_log_name         = MODEL_NAME,
         reset_num_timesteps = not resume,
     )

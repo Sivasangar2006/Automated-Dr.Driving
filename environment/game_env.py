@@ -87,18 +87,20 @@ class DrDrivingEnv(gym.Env):
         if PHASE == 1:
             action = 0
 
-        # Read frame + speed BEFORE acting
+        # ── ACT ──────────────────
+        # Send keys once per RL step instead of 4 times (prevents jitter)
+        perform_action(action)
+
+        # ── WAIT ─────────────────
+        # Wait for frame-skip
+        for _ in range(FRAME_SKIP):
+            time.sleep(STEP_SLEEP)
+
+        # ── OBSERVE ──────────────
+        # Capture frame/speed AFTER acting (fixes "brain lag")
         raw_frame = get_frame()
         frame     = self._process_frame(raw_frame)
         speed     = get_speed()
-
-        # ⚡ Frame-skip loop: hold the action for FRAME_SKIP game frames
-        for _ in range(FRAME_SKIP):
-            perform_action(action)       # no speed arg — AI controls speed now
-            time.sleep(STEP_SLEEP)
-
-        # Read speed AFTER acting (for reward + stall detection)
-        speed = get_speed()
 
         # ── Reward (Phase 2: full AI control) ────────────────────────────────
         #
