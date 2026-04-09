@@ -46,13 +46,37 @@ class ADBEnvManager:
     def tap(self, x, y):
         self.device.shell(f"input tap {x} {y}")
 
-    def hold_button(self, x, y, duration_ms):
+    def execute_action(self, action):
         """
-        Simulate holding a button by performing a 0-distance swipe over duration.
+        Actions:
+        0: Accel        | 1: Accel+Left   | 2: Accel+Right
+        3: Coast        | 4: Coast+Left   | 5: Coast+Right
+        6: Brake        | 7: Brake+Left   | 8: Brake+Right
         """
-        self.device.shell(f"input swipe {x} {y} {x} {y} {duration_ms}")
+        # --- Coordinates from coords_log.txt ---
+        # Gas: 297, 740
+        # Brake: 102, 810
+        # Wheel Left: 1239, 721
+        # Wheel Right: 1548, 718
         
+        commands = []
+        
+        # 1. Evaluate Gas/Brake
+        if action in [0, 1, 2]:
+            commands.append("input swipe 297 740 297 740 100") # Hold gas slightly
+        elif action in [6, 7, 8]:
+            commands.append("input swipe 102 810 102 810 100") # Hold brake slightly
+
+        # 2. Evaluate Steering
+        if action in [1, 4, 7]:
+            commands.append("input tap 1239 721")  # Tap left wheel edge
+        elif action in [2, 5, 8]:
+            commands.append("input tap 1548 718")  # Tap right wheel edge
+
+        # Execute in sequence on device (this runs very fast over shell)
+        if commands:
+            shell_cmd = " ; ".join(commands)
+            self.device.shell(shell_cmd)
+
     def release_all(self):
-        # With ADB, touch events complete based on their duration.
-        # However, to be safe, we can send a dummy tap to interrupt.
         pass

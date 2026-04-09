@@ -94,7 +94,10 @@ class DrDrivingEnv(gym.Env):
         perform_action(action)
 
         # ── WAIT ─────────────────
-        # Wait for frame-skip
+        # ── ACT ──────────────────
+        self.adb.execute_action(action)
+
+        # Wait for frame-skip to let physics happen
         for _ in range(FRAME_SKIP):
             time.sleep(STEP_SLEEP)
 
@@ -102,14 +105,8 @@ class DrDrivingEnv(gym.Env):
         raw_frame = self.adb.get_frame()
         frame     = self._process_frame(raw_frame)
         
-        # TODO: Implement ADB-based speed detection
         # Temporary placeholder speed to allow training to run until we map the speedometer
         speed = 0.5 
-
-        # ── ACT ──────────────────
-        # Temporary logic until we map screen coordinates
-        # self.adb.tap(X, Y)
-        # -------------------------
 
         # ── Reward (Phase 2: full AI control) ────────────────────────────────
         #
@@ -167,8 +164,7 @@ class DrDrivingEnv(gym.Env):
                 print(f"[STALL] Speed near 0 for >3s at step {self._step_count} — forcing restart")
                 terminated = True
                 reward = -10.0
-                self._stall_since = None
-                restart_mission()
+                self.adb.tap(1750, 970) 
         else:
             self._stall_since = None              # reset clock when moving
 
@@ -178,14 +174,13 @@ class DrDrivingEnv(gym.Env):
                 terminated = True
                 reward = +50.0
                 print(f"[FINISH LINE] Reached finish at step {self._step_count}! 🏆")
-                # finish_mission()
-                # self.adb.tap(RETRY_X, RETRY_Y) # TODO: Map restart coords for finish line
+                self.adb.tap(1750, 970) # Retry button for finish line
 
             elif self._is_crashed(raw_frame):
                 # Crashed into a car or wall (screen went dark)
                 terminated = True
                 reward = -10.0
-                restart_mission()
+                self.adb.tap(1750, 970)
 
         truncated = self._step_count >= self._max_steps
 

@@ -1,0 +1,1 @@
+{'Gas Pedal (Bottom Right)': (297, 740), 'Brake Pedal (Bottom Left)': (102, 810), 'Steering Wheel (Middle Left Edge)': (1239, 721), 'Steering Wheel (Middle Right Edge)': (1548, 718)}

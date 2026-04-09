@@ -7,6 +7,7 @@ import numpy as np
 from collections import deque
 from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
 from environment.game_env import DrDrivingEnv
 from agent.model import (
@@ -45,19 +46,31 @@ class DiagnosticCallback(BaseCallback):
         return True
 
 
+def make_env(rank):
+    """
+    Utility function for multiplexed multiprocessing.
+    Creates ADB environments on port 5555, 5565, 5575...
+    """
+    def _init():
+        env = DrDrivingEnv(adb_port=5555 + (rank * 10))
+        env = Monitor(env)
+        return env
+    return _init
+
 def train(resume=False):
 
     # --- create folders if they don't exist yet ---
     os.makedirs(SAVE_DIR, exist_ok=True)
     os.makedirs(LOG_DIR, exist_ok=True)
 
-    # --- set up the environment ---
-    env = DrDrivingEnv()
-    env = Monitor(env)  # Monitor logs rewards and episode lengths automatically
+    # --- set up the Vectorized Environment ---
+    # Running 3 instances in parallel automatically maps to ports: 5555, 5565, 5575
+    n_envs = 3
+    env = SubprocVecEnv([make_env(i) for i in range(n_envs)])
 
     # --- save a checkpoint every 50k steps ---
     checkpoint_callback = CheckpointCallback(
-        save_freq   = 50_000,
+        save_freq   = max(50_000 // n_envs, 1),
         save_path   = SAVE_DIR,
         name_prefix = MODEL_NAME,
     )
