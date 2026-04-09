@@ -3,8 +3,7 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 
-from environment.vision import get_frame, get_speed
-from environment.controls import perform_action, release_all, restart_mission, finish_mission
+from environment.adb_manager import ADBEnvManager
 
 # -------------------------------------------------------
 # CURRICULUM PHASE
@@ -26,8 +25,11 @@ STEP_SLEEP  = 0.02  # seconds per frame (was 0.08 for 1 frame)
 
 class DrDrivingEnv(gym.Env):
 
-    def __init__(self):
+    def __init__(self, adb_port=5555):
         super(DrDrivingEnv, self).__init__()
+
+        # Connect to the specific ADB instance
+        self.adb = ADBEnvManager(serial=f"127.0.0.1:{adb_port}")
 
         self.action_space = spaces.Discrete(9)  # 3 speed states × 3 steer states
 
@@ -73,7 +75,7 @@ class DrDrivingEnv(gym.Env):
         self.prev_speed = 0.0
         self._stall_since = None
 
-        frame = self._process_frame(get_frame())
+        frame = self._process_frame(self.adb.get_frame())
         return frame, {}
 
     def step(self, action):
@@ -97,10 +99,17 @@ class DrDrivingEnv(gym.Env):
             time.sleep(STEP_SLEEP)
 
         # ── OBSERVE ──────────────
-        # Capture frame/speed AFTER acting (fixes "brain lag")
-        raw_frame = get_frame()
+        raw_frame = self.adb.get_frame()
         frame     = self._process_frame(raw_frame)
-        speed     = get_speed()
+        
+        # TODO: Implement ADB-based speed detection
+        # Temporary placeholder speed to allow training to run until we map the speedometer
+        speed = 0.5 
+
+        # ── ACT ──────────────────
+        # Temporary logic until we map screen coordinates
+        # self.adb.tap(X, Y)
+        # -------------------------
 
         # ── Reward (Phase 2: full AI control) ────────────────────────────────
         #
@@ -169,7 +178,8 @@ class DrDrivingEnv(gym.Env):
                 terminated = True
                 reward = +50.0
                 print(f"[FINISH LINE] Reached finish at step {self._step_count}! 🏆")
-                finish_mission()
+                # finish_mission()
+                # self.adb.tap(RETRY_X, RETRY_Y) # TODO: Map restart coords for finish line
 
             elif self._is_crashed(raw_frame):
                 # Crashed into a car or wall (screen went dark)
@@ -196,4 +206,4 @@ class DrDrivingEnv(gym.Env):
         return frame, reward, terminated, truncated, info
 
     def close(self):
-        release_all()
+        self.adb.release_all()

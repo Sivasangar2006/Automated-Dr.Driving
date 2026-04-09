@@ -8,8 +8,7 @@ def scan_bluestacks_ports():
     # Instance 0 (Main): 5555
     # Instance 1: 5565
     # Instance 2: 5575
-    # Instance 3: 5585
-    ports = [5555, 5565, 5575, 5585]
+    ports = [5555, 5565, 5575]
     
     connected_devices = []
     
