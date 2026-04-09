@@ -18,7 +18,7 @@ def scan_bluestacks_ports():
             # Try to connect
             result = adbutils.adb.connect(f"127.0.0.1:{port}")
             if "connected" in result.lower() or "already" in result.lower():
-                print(f"✅ Successfully pinged a device on port {port}!")
+                print(f"Successfully pinged a device on port {port}!")
         except Exception as e:
             pass
 
@@ -27,12 +27,12 @@ def scan_bluestacks_ports():
     
     devices = adbutils.adb.device_list()
     if not devices:
-        print("❌ No ADB devices found! Please ensure ADB is turned ON in BlueStacks settings.")
+        print("No ADB devices found! Please ensure ADB is turned ON in BlueStacks settings.")
         return
         
     for d in devices:
         info = d.prop.name or "Unknown Device"
-        print(f"📱 Connected to: {d.serial} ({info})")
+        print(f"Connected to: {d.serial} ({info})")
 
 if __name__ == "__main__":
     scan_bluestacks_ports()
