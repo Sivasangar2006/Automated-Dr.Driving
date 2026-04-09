@@ -122,27 +122,24 @@ class DrDrivingEnv(gym.Env):
         #   +50.0        → finish line 🏆
         # ─────────────────────────────────────────────────────────────────────
 
-        reward = 0.05   # survival bonus every step
+        # 1. Base Survival (staying alive is good)
+        reward = 0.05   
 
-        # Speed reward — nuanced: coasting is acceptable, not punished
-        if speed > 0.25:          # > 50 km/h — good speed
-            reward += 0.30
-        elif speed > 0.10:        # 20–50 km/h — coasting (OK near obstacles)
-            reward += 0.10
-        else:                     # < 20 km/h — nearly stopped
-            reward -= 0.20
+        # 2. Optimal Speed Reward (continuous scaling)
+        # speed_ratio is 0.0 to 1.0 (0 to ~200 km/h)
+        # 100km/h (ratio ~0.5) gives +0.25
+        reward += speed * 0.50
 
-        # Coast penalty — small, discourages pointless coasting on clear road
-        if action in (3, 4, 5):
-            reward -= 0.03
+        # 3. Obstacle Avoidance (Dodge Logic)
+        if action in (1, 2, 4, 5, 7, 8):  # Steering actions
+            if speed > 0.15:  # Over ~30 km/h
+                reward += 0.10  # Reward dodging at speed
+            else:
+                reward -= 0.05  # Slight penalty for slow-speed pointless swerving
 
-        # Brake penalty — more expensive, use only when truly needed
+        # 4. Brake/Coast penalties
         if action in (6, 7, 8):
-            reward -= 0.07
-
-        # Steering penalty — prefer straight, steer only to avoid crashes
-        if action in (1, 2, 4, 5, 7, 8):
-            reward -= 0.15
+            reward -= 0.07  # Braking is heavily discouraged unless necessary
 
         terminated = False
 

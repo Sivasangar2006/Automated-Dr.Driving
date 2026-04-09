@@ -22,7 +22,7 @@ HYPERPARAMS = {
 }
 
 # Training config
-TOTAL_TIMESTEPS = 150_000   # ⚡ reduced from 500k — BC pre-training covers the rest
+TOTAL_TIMESTEPS = 500_000   # Set to 500k for pure RL without BC
 SAVE_DIR        = "models/"
 LOG_DIR         = "logs/"
 MODEL_NAME      = "dr_driving_ppo"

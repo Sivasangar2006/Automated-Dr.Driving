@@ -23,11 +23,7 @@ def main():
         help    = "resume training from last saved checkpoint"
     )
 
-    parser.add_argument(
-        "--pretrain",
-        action  = "store_true",
-        help    = "start RL from BC pre-trained weights (run train_bc.py first)"
-    )
+
 
     parser.add_argument(
         "--episodes",
@@ -39,7 +35,7 @@ def main():
     args = parser.parse_args()
 
     if args.mode == "train":
-        train(resume=args.resume, pretrain=args.pretrain)
+        train(resume=args.resume)
 
     elif args.mode == "evaluate":
         evaluate(n_episodes=args.episodes)
