@@ -7,7 +7,12 @@ class ADBEnvManager:
     def __init__(self, serial=None):
         self.adb = adbutils.adb
         if serial:
-            self.device = self.adb.device(serial)
+            try:
+                # Must explicitly connect to TCP adb ports first
+                self.adb.connect(serial)
+                self.device = self.adb.device(serial)
+            except Exception as e:
+                raise RuntimeError(f"Could not connect to {serial}. Ensure you have the BlueStacks instance for this port open! Error: {e}")
         else:
             # Auto-connect if none provided
             devices = self.adb.device_list()
@@ -63,19 +68,20 @@ class ADBEnvManager:
         
         # 1. Evaluate Gas/Brake
         if action in [0, 1, 2]:
-            commands.append("input swipe 297 740 297 740 100") # Hold gas slightly
+            commands.append("input swipe 297 740 297 740 400") # Hold gas completely
         elif action in [6, 7, 8]:
-            commands.append("input swipe 102 810 102 810 100") # Hold brake slightly
+            commands.append("input swipe 102 810 102 810 400") # Hold brake completely
 
         # 2. Evaluate Steering
         if action in [1, 4, 7]:
-            commands.append("input tap 1239 721")  # Tap left wheel edge
+            commands.append("input tap 1239 721 &")  # Tap left wheel edge asynchronously
         elif action in [2, 5, 8]:
-            commands.append("input tap 1548 718")  # Tap right wheel edge
+            commands.append("input tap 1548 718 &")  # Tap right wheel edge asynchronously
 
-        # Execute in sequence on device (this runs very fast over shell)
+        # Execute in sequence on device
         if commands:
-            shell_cmd = " ; ".join(commands)
+            # We put tap first using & so it runs in bg, then swipe blocks for 400ms holding gas
+            shell_cmd = " ".join(commands)
             self.device.shell(shell_cmd)
 
     def release_all(self):

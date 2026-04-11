@@ -49,10 +49,16 @@ class DiagnosticCallback(BaseCallback):
 def make_env(rank):
     """
     Utility function for multiplexed multiprocessing.
-    Creates ADB environments on port 5555, 5565, 5575...
+    Creates ADB environments explicitly on ports 5556, 5595, 5605.
+    Hooks into specific Window Handles targeting those instances.
     """
+    ports = [5556, 5595, 5605]
+    
+    # Exact Window Titles of the instances based on earlier diagnostics
+    windows = ["BlueStacks App Player", "BlueStacks App Player 4", "BlueStacks App Player 5"]
+    
     def _init():
-        env = DrDrivingEnv(adb_port=5555 + (rank * 10))
+        env = DrDrivingEnv(adb_port=ports[rank], window_title=windows[rank])
         env = Monitor(env)
         return env
     return _init

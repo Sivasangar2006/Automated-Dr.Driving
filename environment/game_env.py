@@ -4,6 +4,7 @@ import gymnasium as gym
 from gymnasium import spaces
 
 from environment.adb_manager import ADBEnvManager
+from environment.win32_manager import Win32Manager
 
 # -------------------------------------------------------
 # CURRICULUM PHASE
@@ -25,11 +26,12 @@ STEP_SLEEP  = 0.02  # seconds per frame (was 0.08 for 1 frame)
 
 class DrDrivingEnv(gym.Env):
 
-    def __init__(self, adb_port=5555):
+    def __init__(self, adb_port=5555, window_title="BlueStacks App Player"):
         super(DrDrivingEnv, self).__init__()
 
-        # Connect to the specific ADB instance
+        # Target the exact background processes for visual AND controls
         self.adb = ADBEnvManager(serial=f"127.0.0.1:{adb_port}")
+        self.win32 = Win32Manager(window_title=window_title)
 
         self.action_space = spaces.Discrete(9)  # 3 speed states × 3 steer states
 
@@ -90,12 +92,7 @@ class DrDrivingEnv(gym.Env):
             action = 0
 
         # ── ACT ──────────────────
-        # Send keys once per RL step instead of 4 times (prevents jitter)
-        perform_action(action)
-
-        # ── WAIT ─────────────────
-        # ── ACT ──────────────────
-        self.adb.execute_action(action)
+        self.win32.execute_action(action)
 
         # Wait for frame-skip to let physics happen
         for _ in range(FRAME_SKIP):
@@ -201,4 +198,5 @@ class DrDrivingEnv(gym.Env):
         return frame, reward, terminated, truncated, info
 
     def close(self):
-        self.adb.release_all()
+        self.win32.release_all()
+        # self.adb.release_all() # Only using ADB for screen now
